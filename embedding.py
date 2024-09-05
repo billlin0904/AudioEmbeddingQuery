@@ -16,6 +16,7 @@ class AudioEmbeddingDatabase:
         self.at = AudioTagging(checkpoint_path=None, device=device)
 
     def embed_and_save(self, path, audio_id):
+        print(f"Process {path}")
         # 讀取音頻文件並進行處理
         audio, _ = librosa.core.load(path, sr=32000, mono=True)
         audio = audio[None, :]  # 添加新的維度
@@ -81,10 +82,6 @@ db = AudioEmbeddingDatabase()
 class EmbeddingItem(BaseModel):
     file_path: str
     audio_id: str
-    
-class EmbeddingResult(BaseModel):
-    file_path: str
-    distances: List[float]
 
 @app.post("/embed_and_save")
 async def embed_and_save(item: EmbeddingItem):
