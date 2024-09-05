@@ -3,7 +3,10 @@ import numpy as np
 from chromadb import PersistentClient
 from chromadb.config import Settings
 from panns_inference import AudioTagging
-import hashlib
+from typing import List
+from pydantic import BaseModel
+from typing import Union
+from fastapi import FastAPI, Query
 
 class AudioEmbeddingDatabase:
     def __init__(self, chroma_db_settings=None, collection_name="audio_embeddings", device='cpu'):
@@ -12,7 +15,7 @@ class AudioEmbeddingDatabase:
         self.collection = self.client.get_or_create_collection(collection_name)
         self.at = AudioTagging(checkpoint_path=None, device=device)
 
-    def embed_and_save(self, path):
+    def embed_and_save(self, path, audio_id):
         # 讀取音頻文件並進行處理
         audio, _ = librosa.core.load(path, sr=32000, mono=True)
         audio = audio[None, :]  # 添加新的維度
@@ -22,15 +25,13 @@ class AudioEmbeddingDatabase:
             _, embedding = self.at.inference(audio)
             embedding = embedding / np.linalg.norm(embedding)  # 正規化嵌入向量
             embedding = embedding.tolist()[0]  # 轉換為 Python 列表
-
-            # 使用音頻文件的完整路徑生成唯一的哈希值作為 ID
-            audio_id = hashlib.sha256(path.encode()).hexdigest()
-
+            
             # 插入嵌入向量到 ChromaDB
             self.collection.add(
-                documents=[path],    # 原始音頻文件路徑
-                embeddings=[embedding],  # 嵌入向量
-                ids=[audio_id]       # 音頻文件 ID
+                documents=[path],
+                embeddings=[embedding],
+                metadatas=[{"audio_id": audio_id}],
+                ids = [audio_id]
             )
 
             print(f"Successfully inserted and saved path: {path} with ID: {audio_id}")
@@ -60,21 +61,42 @@ class AudioEmbeddingDatabase:
             results = self.collection.query(
                 query_embeddings=embeddings,  # 查詢的嵌入向量
                 n_results=n_results,  # 每個查詢的返回結果數量限制
-                include=["documents", "distances"]  # 返回文檔和距離信息
+                include=["documents", "distances", "metadatas"]  # 返回文檔和距離信息
             )
 
             # 處理檢索結果
             for x in range(len(results["documents"])):
                 file_path = results["documents"][x]  # 返回的結果文件列表
                 distances = results["distances"][x]  # 返回的距離列表
-                print(f"{file_path} {distances}")
-                res.append((file_path, distances))
+                metadata = results["metadatas"][x]
+                audio_id = metadata[1]["audio_id"]
+                res.append((file_path, distances, audio_id))
         except Exception as e:
             print("Failed to search vectors in Chroma: {}".format(e))
         return res
+
+app = FastAPI()
+db = AudioEmbeddingDatabase()
+
+class EmbeddingItem(BaseModel):
+    file_path: str
+    audio_id: str
     
-if __name__ == "main":
-    # 使用示例
-    db = AudioEmbeddingDatabase()
-    db.embed_and_save("test.flac")
-    results = db.query_embeddings(["test.flac"])
+class EmbeddingResult(BaseModel):
+    file_path: str
+    distances: List[float]
+
+@app.post("/embed_and_save")
+async def embed_and_save(item: EmbeddingItem):
+    db.embed_and_save(item.file_path, item.audio_id)
+
+@app.get("/query_embeddings")
+async def query_embeddings(paths: List[str] = Query(None)):
+    results = []
+    for result in db.query_embeddings(paths):
+        results.append({
+                "file_path": result[0], 
+                "distances": result[1], 
+                "audio_id": result[2]
+            })
+    return results
