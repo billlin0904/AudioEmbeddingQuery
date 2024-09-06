@@ -36,8 +36,8 @@ def wave_to_spectrogram(wave, hop_length, n_fft, mid_side=False, mid_side_b2=Fal
         wave_left = np.asfortranarray(wave[0])
         wave_right = np.asfortranarray(wave[1])
 
-    spec_left = librosa.stft(wave_left, n_fft, hop_length=hop_length)
-    spec_right = librosa.stft(wave_right, n_fft, hop_length=hop_length)
+    spec_left = librosa.stft(wave_left, n_fft=n_fft, hop_length=hop_length)
+    spec_right = librosa.stft(wave_right, n_fft=n_fft, hop_length=hop_length)
     
     spec = np.asfortranarray([spec_left, spec_right])
 

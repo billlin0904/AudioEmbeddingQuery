@@ -4,3 +4,4 @@ panns_inference
 chromadb
 scipy
 resampy
+anyio

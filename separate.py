@@ -130,10 +130,10 @@ class AudioSeparate:
                 X_wave[d] = librosa.core.resample(X_wave[d+1], orig_sr = self.mp.param['band'][d+1]['sr'], target_sr = bp['sr'], res_type=bp['res_type'])
             
             # 將波形數據轉換為頻譜
-            X_spec_s[d] = spec_utils.wave_to_spectrogram_mt(X_wave[d], bp['hl'], bp['n_fft'], 
-                                                            self.mp.param['mid_side'], 
-                                                            self.mp.param['mid_side_b2'], 
-                                                            self.mp.param['reverse'])
+            X_spec_s[d] = spec_utils.wave_to_spectrogram(X_wave[d], bp['hl'], bp['n_fft'], 
+                                                        self.mp.param['mid_side'], 
+                                                        self.mp.param['mid_side_b2'], 
+                                                        self.mp.param['reverse'])
             
             # 處理高頻數據
             if d == bands_n and self.data['high_end_process'] != 'none':

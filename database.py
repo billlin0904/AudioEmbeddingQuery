@@ -1,12 +1,9 @@
 import librosa
 import numpy as np
 from chromadb import PersistentClient
-from chromadb.config import Settings
 from panns_inference import AudioTagging
 from typing import List
-from pydantic import BaseModel
-from typing import Union
-from fastapi import FastAPI, Query
+from fastapi import Query
 from separate import AudioSeparate
 import os
 
@@ -22,10 +19,10 @@ class AudioEmbeddingDatabase:
     def __get_or_create_collection(self):
         self.collection = self.client.get_or_create_collection(self.collection_name)
 
-    def separate_audio(self, file_path: str):
+    def separate_audio(self, file_path: str):        
         ins_root = "instrument"
         name = os.path.basename(file_path)
-        self.separate.save_audio(file_path, ins_root = "instrument")
+        self.separate.save_audio(file_path, ins_root = ins_root)
         save_path = os.path.join(ins_root, 'instrument_{}.wav'.format(name)) 
         return save_path
 
@@ -59,7 +56,8 @@ class AudioEmbeddingDatabase:
         except Exception as e:
             print(f"Failed: {path}; error: {e}")
         finally:
-            os.remove(save_path)
+            #os.remove(save_path)
+            pass
 
     def get_embeddings(self, paths):
         # 對待檢索音頻批量抽取特徵，返回embedding
