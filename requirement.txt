@@ -2,3 +2,5 @@ librosa
 numpy
 panns_inference
 chromadb
+scipy
+resampy

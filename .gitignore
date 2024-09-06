@@ -1,2 +1,5 @@
 /chroma
-/test.flac
+/__pycache__
+/uvr5_pack/__pycache__
+/uvr5_pack/lib_v5/__pycache__
+/uvr5_weights/2_HP-UVR.pth
