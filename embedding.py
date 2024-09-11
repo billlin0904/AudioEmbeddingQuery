@@ -13,7 +13,7 @@ print(f'Using device: {device}')
 app = FastAPI()
 db = AudioEmbeddingDatabase()
 
-to_thread.current_default_thread_limiter().total_tokens = 8
+to_thread.current_default_thread_limiter().total_tokens = 2
 
 class EmbeddingItem(BaseModel):
     file_path: str
