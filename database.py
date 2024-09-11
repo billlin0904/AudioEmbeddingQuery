@@ -99,7 +99,7 @@ class AudioEmbeddingDatabase:
         
         # 構建查詢的嵌入向量列表
         embeddings = []
-        paths_to_process = []
+        not_found = False
     
         # 先嘗試從緩存中獲取嵌入
         for path in paths:
@@ -108,18 +108,12 @@ class AudioEmbeddingDatabase:
                 print(f"Using cached embedding for {path}")
                 embeddings.append(cached_embedding.tolist())
             else:
-                # 如果緩存中沒有，則需要進行處理
-                paths_to_process.append(path)
-        
-        # 對緩存中不存在的音頻進行嵌入提取
-        if paths_to_process:
-            new_embeddings = self.get_embeddings(paths_to_process)
-            for i, path in enumerate(paths_to_process):
-                audio_id = os.path.basename(path)  # 使用文件名作為 audio_id
-                embedding = new_embeddings[i]
-                # 保存新提取的嵌入到緩存
-                self.cache.save_embedding(audio_id, path, embedding)
-                embeddings.append(embedding.tolist())
+                not_found = True
+                break
+            
+        if not_found:
+            embeddings.clear()
+            embeddings = self.get_embeddings(paths)
             
         res = []
 
@@ -143,4 +137,5 @@ class AudioEmbeddingDatabase:
         return res
     
     def flush(self):
+        self.cache.clear_cache()
         self.client.reset()
