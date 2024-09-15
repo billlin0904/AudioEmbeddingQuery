@@ -80,11 +80,11 @@ class AudioEmbeddingDatabase:
     def get_embeddings(self, paths):
         # 對待檢索音頻批量抽取特徵，返回embedding
         embedding_list = []
-        for x in paths:
-            save_path = self.separate_audio(x)
-            audio, _ = librosa.core.load(x, sr=32000, mono=True)
-            audio = audio[None, :]
+        for x in paths:            
             try:
+                save_path = self.separate_audio(x)
+                audio, _ = librosa.core.load(save_path, sr=32000, mono=True)
+                audio = audio[None, :]
                 _, embedding = self.at.inference(audio)
                 embedding = embedding / np.linalg.norm(embedding)  # 正規化嵌入向量
                 embedding_list.append(embedding)
