@@ -47,6 +47,18 @@ async def query_embeddings(paths: List[str] = Query(None)):
         print(f"Error: {e}")
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
+@app.delete("/delete_embedding")
+async def delete_embedding(audio_ids: List[str] = Query(None)):
+    try:
+        # 将删除操作移到线程中执行
+        await to_thread.run_sync(db.delete_embedding, audio_ids)
+        return JSONResponse(content={"status": "success", "message": f"Embedding with ID {audio_ids} deleted"}, status_code=200)
+    except Exception as e:
+        print(f"Error deleting embedding: {e}")
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+            
+
 @app.delete("/flushdb")
 async def flushdb():
     try:

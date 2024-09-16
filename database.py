@@ -1,19 +1,18 @@
 import librosa
 import numpy as np
 from chromadb import PersistentClient
-from panns_inference import AudioTagging
 from typing import List
 from fastapi import Query
 from separate import AudioSeparate
 import os
 from embedding_cache import EmbeddingCache
+import openl3  # 新添加的导入
 
 class AudioEmbeddingDatabase:
     def __init__(self, chroma_db_settings=None, collection_name="audio_embeddings", device='cuda'):
-        # 初始化 ChromaDB 客戶端和集合
+        # 初始化 ChromaDB 客户端和集合
         self.client = PersistentClient(settings=chroma_db_settings)
         self.collection = self.client.get_or_create_collection(collection_name)
-        self.at = AudioTagging(device=device)
         self.separate = AudioSeparate(model_path="uvr5_weights/2_HP-UVR.pth", device=device)
         self.cache = EmbeddingCache()
         self.collection_name = collection_name
@@ -24,17 +23,17 @@ class AudioEmbeddingDatabase:
     def separate_audio(self, file_path: str):        
         ins_root = "instrument"
         name = os.path.basename(file_path)
-        self.separate.save_audio(file_path, ins_root = ins_root)
-        save_path = os.path.join(ins_root, 'instrument_{}.wav'.format(name)) 
+        self.separate.save_audio(file_path, ins_root=ins_root)
+        save_path = os.path.join(ins_root, f'instrument_{name}.wav')
         return save_path
 
     def embed_and_save(self, path, audio_id):
         self.__get_or_create_collection()
         
-         # 嘗試從緩存中讀取嵌入
+        # 尝试从缓存中读取嵌入
         cached_embedding = self.cache.get_embedding(audio_id)
         if cached_embedding is not None:
-            print(f"Using cached embedding for {audio_id}")
+            print(f"使用缓存的嵌入：{audio_id}")
             self.collection.add(
                 documents=[path],
                 embeddings=[cached_embedding.tolist()],
@@ -44,73 +43,86 @@ class AudioEmbeddingDatabase:
             return
         
         save_path = self.separate_audio(path)
-        print(f"Process {save_path}")
+        print(f"正在处理 {save_path}")
         
-        # 讀取音頻文件並進行處理
-        audio, _ = librosa.core.load(save_path, sr=32000, mono=True)
-        audio = audio[None, :]  # 添加新的維度
+        # 读取音频文件并进行处理
+        audio, sr = librosa.load(save_path, sr=None, mono=True)
 
         try:
-            print(f"Get {save_path} embedding")
+            print(f"获取 {save_path} 的嵌入")
             
-            # 獲取嵌入向量
-            _, embedding = self.at.inference(audio)
-            embedding = embedding / np.linalg.norm(embedding)  # 正規化嵌入向量
+            # 使用 openl3 获取嵌入
+            embedding, _ = openl3.get_audio_embedding(
+                audio,
+                sr,
+                hop_size=0.1,
+                embedding_size=512,
+                content_type='music'  # 或 'env'，根据您的使用场景
+            )
+            # 对时间帧进行平均，得到单个嵌入向量
+            embedding = np.mean(embedding, axis=0)
+            embedding = embedding / np.linalg.norm(embedding)  # 归一化嵌入向量
             
-            # 保存嵌入到 SQLite 緩存
+            # 将嵌入保存到 SQLite 缓存
             self.cache.save_embedding(audio_id, path, embedding)
             
-            embedding = embedding.tolist()[0]  # 轉換為 Python 列表
+            embedding = embedding.tolist()  # 转换为 Python 列表
             
-            # 插入嵌入向量到 ChromaDB
+            # 将嵌入插入到 ChromaDB
             self.collection.add(
                 documents=[path],
                 embeddings=[embedding],
                 metadatas=[{"audio_id": audio_id}],
-                ids = [audio_id]
+                ids=[audio_id]
             )
 
-            print(f"Successfully inserted and saved path: {path} with ID: {audio_id}")
+            print(f"成功插入并保存路径：{path}，ID：{audio_id}")
         except Exception as e:
-            print(f"Failed: {path}; error: {e}")
+            print(f"失败：{path}；错误：{e}")
         finally:
             os.remove(save_path)
-            pass
 
     def get_embeddings(self, paths):
-        # 對待檢索音頻批量抽取特徵，返回embedding
+        # 批量提取查询音频的嵌入，返回 embedding
         embedding_list = []
         for x in paths:            
             try:
                 save_path = self.separate_audio(x)
-                audio, _ = librosa.core.load(save_path, sr=32000, mono=True)
-                audio = audio[None, :]
-                _, embedding = self.at.inference(audio)
-                embedding = embedding / np.linalg.norm(embedding)  # 正規化嵌入向量
+                audio, sr = librosa.load(save_path, sr=None, mono=True)
+                # 使用 openl3 获取嵌入
+                embedding, _ = openl3.get_audio_embedding(
+                    audio,
+                    sr,
+                    hop_size=0.1,
+                    embedding_size=512,
+                    content_type='music'
+                )
+                embedding = np.mean(embedding, axis=0)
+                embedding = embedding / np.linalg.norm(embedding)
                 embedding_list.append(embedding)
             except Exception as e:
-                print(f"Embedding Failed: {x}, Error: {e}")
+                print(f"嵌入失败：{x}，错误：{e}")
             finally:
                 os.remove(save_path)
-        return np.array(embedding_list, dtype=np.float32).squeeze()
+        return np.array(embedding_list, dtype=np.float32)
 
     def query_embeddings(self, paths, n_results=10):
         self.__get_or_create_collection()
         
-        # 構建查詢的嵌入向量列表
+        # 构建查询的嵌入向量列表
         embeddings = []
         not_found = False
     
-        # 先嘗試從緩存中獲取嵌入
+        # 首先尝试从缓存中获取嵌入
         for path in paths:
             cached_embedding = self.cache.get_embedding_from_file_path(path)
             if cached_embedding is not None:
-                print(f"Using cached embedding for {path}")
+                print(f"使用缓存的嵌入：{path}")
                 embeddings.append(cached_embedding.tolist())
             else:
                 not_found = True
                 break
-            
+                
         if not_found:
             embeddings.clear()
             embeddings = self.get_embeddings(paths)
@@ -119,12 +131,12 @@ class AudioEmbeddingDatabase:
 
         try:
             results = self.collection.query(
-                query_embeddings=embeddings,  # 查詢的嵌入向量
-                n_results=n_results,  # 每個查詢的返回結果數量限制
-                include=["documents", "distances", "metadatas"]  # 返回文檔和距離信息
+                query_embeddings=embeddings,  # 查询的嵌入向量
+                n_results=n_results,  # 每个查询的返回结果数量限制
+                include=["documents", "distances", "metadatas"]  # 返回文档和距离信息
             )
 
-            # 處理檢索結果
+            # 处理检索结果
             for x in range(len(results["documents"])):
                 for i in range(len(results["documents"][x])):
                     file_path = results["documents"][x][i]
@@ -133,9 +145,22 @@ class AudioEmbeddingDatabase:
                     audio_id = metadata["audio_id"]
                     res.append((file_path, distances, audio_id))                
         except Exception as e:
-            print("Failed to search vectors in Chroma: {}".format(e))
+            print(f"在 Chroma 中搜索向量失败：{e}")
         return res
     
+    def delete_embedding(self, audio_ids):
+        for audio_id in audio_ids:
+            try:
+                # 从 ChromaDB 集合中删除嵌入
+                self.collection.delete(ids=[audio_id])
+    
+                # 从嵌入缓存中删除嵌入
+                self.cache.delete_embedding(audio_id)
+    
+                print(f"成功删除嵌入，ID：{audio_id}")
+            except Exception as e:
+                print(f"删除嵌入失败，ID：{audio_id}，错误：{e}")        
+            
     def flush(self):
         self.cache.clear_cache()
         self.client.reset()
